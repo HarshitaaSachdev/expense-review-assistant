@@ -1,0 +1,118 @@
+[{
+        "claimant": "Priya Sharma",
+        "date": "2026-09-15",
+        "category": "Meals",
+        "amount": 850,
+        "currency": "INR",
+        "description": "Lunch during client workshop in Pune",
+        "receiptAvailable": true
+    },
+    {
+        "claimant": "Lukas Schmidt",
+        "date": "2026-09-18",
+        "category": "Ground Transport",
+        "amount": 20,
+        "currency": "EUR",
+        "description": "Taxi from Berlin airport to hotel",
+        "receiptAvailable": true
+    },
+    {
+        "claimant": "Lukas Schmidt",
+        "date": "2026-09-18",
+        "category": "Ground Transport",
+        "amount": 20,
+        "currency": "EUR",
+        "description": "Taxi from Berlin airport to hotel",
+        "receiptAvailable": true
+    },
+    {
+        "claimant": "Emily Chen",
+        "date": "2026-09-20",
+        "category": "Meals",
+        "amount": 30,
+        "currency": "GBP",
+        "description": "Team dinner",
+        "receiptAvailable": true
+    },
+    {
+        "claimant": "Vikram Singh",
+        "date": "2026-09-22",
+        "category": "Other",
+        "amount": 3200,
+        "currency": "INR",
+        "description": "Dinner with Acme Corp procurement team at the airport",
+        "receiptAvailable": true
+    },
+    {
+        "claimant": "Neha Kapoor",
+        "date": "2026-09-10",
+        "category": "Ground Transport",
+        "amount": 1200,
+        "currency": "INR",
+        "description": "Cab to office",
+        "receiptAvailable": false
+    },
+    {
+        "claimant": "Carlos Mendez",
+        "date": "2026-11-15",
+        "category": "Lodging",
+        "amount": 95,
+        "currency": "USD",
+        "description": "Hotel stay in Austin for client visit",
+        "receiptAvailable": true
+    },
+    {
+        "claimant": "Sana Iqbal",
+        "date": "2026-06-01",
+        "category": "Office Supplies",
+        "amount": 900,
+        "currency": "INR",
+        "description": "Notebooks and pens for team planning session",
+        "receiptAvailable": true
+    },
+    {
+        "claimant": "Karan Joshi",
+        "date": "2026-09-25",
+        "category": "Software",
+        "amount": 49,
+        "currency": "USD",
+        "description": "Figma professional plan, monthly",
+        "receiptAvailable": true
+    },
+    {
+        "claimant": "Sophie Martin",
+        "date": "2026-09-26",
+        "category": "",
+        "amount": 50,
+        "currency": "EUR",
+        "description": "Online course on cloud architecture",
+        "receiptAvailable": true
+    },
+    {
+        "claimant": "Daniel O'Brien",
+        "date": "2026-09-27",
+        "category": "Meals",
+        "amount": 18,
+        "currency": "GBP",
+        "description": "Drinks at the bar after the conference",
+        "receiptAvailable": true
+    },
+    {
+        "claimant": "",
+        "date": "2026-09-28",
+        "category": "Ground Transport",
+        "amount": 300,
+        "currency": "INR",
+        "description": "Auto rickshaw to vendor meeting",
+        "receiptAvailable": false
+    },
+    {
+        "claimant": "Divya Rao",
+        "date": "2026-09-29",
+        "category": "Office Supplies",
+        "amount": 4200,
+        "currency": "INR",
+        "description": "Stuff for WFH setup",
+        "receiptAvailable": true
+    }
+]
