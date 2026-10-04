@@ -1,0 +1,102 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum ClaimStatus {
+  PENDING_REVIEW
+  CLARIFICATION_REQUESTED
+  APPROVED
+  REJECTED
+}
+
+enum AiVerdict {
+  COMPLIANT
+  NEEDS_CLARIFICATION
+  NEEDS_REVIEW
+}
+
+enum DecisionAction {
+  APPROVE
+  REJECT
+  REQUEST_CLARIFICATION
+  OVERRIDE_CATEGORY
+  PROVIDE_CLARIFICATION
+}
+
+// One expense claim submitted by an employee
+model Claim {
+  id               String      @id @default(cuid())
+  claimant         String
+  expenseDate      String      // raw "YYYY-MM-DD" so invalid dates can still be stored and flagged
+  category         String      // category as submitted by the employee
+  amount           Decimal     @db.Decimal(12, 2)
+  currency         String
+  description      String
+  receiptAvailable Boolean
+  fingerprint      String      // normalised key used for duplicate detection
+  finalCategory    String?     // set when a reviewer overrides the AI classification
+  status           ClaimStatus @default(PENDING_REVIEW)
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+
+  reviews   Review[]
+  decisions Decision[]
+  events    AuditEvent[]
+
+  @@index([fingerprint])
+}
+
+// One automated review run: deterministic checks + AI analysis
+model Review {
+  id                 String     @id @default(cuid())
+  claimId            String
+  claim              Claim      @relation(fields: [claimId], references: [id], onDelete: Cascade)
+  validationFindings Json       // results of the deterministic rules
+  aiCategory         String?
+  aiConfidence       Float?     // 0 to 1
+  aiUncertain        Boolean    @default(false)
+  aiVerdict          AiVerdict?
+  aiExplanation      String?
+  aiCitations        Json?      // [{ section, quote }]
+  aiQuestions        Json?      // questions to ask the claimant
+  aiSource           String     // "GEMINI" or "FALLBACK"
+  aiModel            String?
+  aiError            String?
+  createdAt          DateTime   @default(now())
+
+  @@index([claimId])
+}
+
+// One action taken by a human reviewer
+model Decision {
+  id           String         @id @default(cuid())
+  claimId      String
+  claim        Claim          @relation(fields: [claimId], references: [id], onDelete: Cascade)
+  action       DecisionAction
+  reviewer     String
+  reason       String?
+  fromCategory String?        // only for OVERRIDE_CATEGORY
+  toCategory   String?        // only for OVERRIDE_CATEGORY
+  createdAt    DateTime       @default(now())
+
+  @@index([claimId])
+}
+
+// Append-only history of everything that happened to a claim
+model AuditEvent {
+  id        String   @id @default(cuid())
+  claimId   String?
+  claim     Claim?   @relation(fields: [claimId], references: [id], onDelete: Cascade)
+  type      String   // e.g. CLAIM_CREATED, VALIDATION_RUN, AI_REVIEW_COMPLETED, AI_REVIEW_FAILED, DECISION_MADE
+  actor     String   // "system", "ai", or the reviewer's name
+  details   Json?
+  createdAt DateTime @default(now())
+
+  @@index([claimId])
+}
