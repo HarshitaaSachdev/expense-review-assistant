@@ -9,14 +9,16 @@
         "lint": "eslint",
         "postinstall": "prisma generate",
         "test": "vitest run",
-        "db:seed": "node --env-file=.env --import tsx prisma/seed.ts"
+        "db:seed": "node --env-file=.env --import tsx prisma/seed.ts",
+        "try:review": "node --env-file=.env --import tsx scripts/try-review.ts"
     },
     "dependencies": {
         "@google/genai": "^2.27.0",
         "@prisma/client": "^6.19.3",
         "next": "16.3.8",
         "react": "19.2.8",
-        "react-dom": "19.2.8"
+        "react-dom": "19.2.8",
+        "zod": "^4.6.5"
     },
     "devDependencies": {
         "@tailwindcss/postcss": "^4",

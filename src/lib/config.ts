@@ -39,3 +39,4 @@ export const CATEGORY_LIMITS: Record<Category, { limit: number; per: string; pol
 
 export const RECEIPT_REQUIRED_ABOVE = 500; // Policy 2.1
 export const SUBMISSION_WINDOW_DAYS = 60; // Policy 1.2
+export const AI_CONFIDENCE_THRESHOLD = 0.7; // below this, a classification is marked uncertain

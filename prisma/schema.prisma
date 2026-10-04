@@ -69,6 +69,9 @@ model Review {
   aiModel            String?
   aiError            String?
   createdAt          DateTime   @default(now())
+  aiUncertaintyReason String?
+  aiNotes             Json?      // adjustments made by the guardrails
+  aiRetrievedRefs     Json?      // policy clauses sent to the AI
 
   @@index([claimId])
 }
