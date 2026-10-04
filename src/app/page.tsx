@@ -1,69 +1,146 @@
-import Image from "next/image";
+"use client";
 
-export default function Home() {
+import Link from "next/link";
+import { useState } from "react";
+import { Badge, buttonClass, EmptyState, ErrorBox, Spinner, Stat, StatusBadge, VerdictBadge } from "@/components/ui";
+import { BASE_CURRENCY } from "@/lib/config";
+import { formatMoney, STATUS_LABELS } from "@/lib/format";
+import type { ClaimListItem, ClaimStatus, Totals } from "@/lib/types";
+import { useApi } from "@/lib/useApi";
+import { toBaseAmount } from "@/lib/validation/rules";
+
+type Filter = ClaimStatus | "ALL";
+const FILTERS: Filter[] = ["ALL", "PENDING_REVIEW", "CLARIFICATION_REQUESTED", "APPROVED", "REJECTED"];
+
+export default function ClaimsPage() {
+  const { data, error, loading, reload } = useApi<{ claims: ClaimListItem[]; totals: Totals }>("/api/claims");
+  const [filter, setFilter] = useState<Filter>("ALL");
+
+  if (loading && !data) return <Spinner label="Loading claims…" />;
+  if (error && !data) return <ErrorBox message={error} onRetry={reload} />;
+  if (!data) return null;
+
+  const { claims, totals } = data;
+  const visible = claims.filter((c) => filter === "ALL" || c.status === filter);
+  const awaitingDecision = (totals.byStatus.PENDING_REVIEW ?? 0) + (totals.byStatus.CLARIFICATION_REQUESTED ?? 0);
+  const needsAttention = claims.filter((c) => !c.latestReview || c.latestReview.aiUncertain).length;
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert h-5 w-[100px]"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
+    <div className="space-y-6">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold">Expense claims</h1>
+          <p className="text-sm text-slate-500">Rule checks and AI suggestions help you review. Every decision is yours.</p>
+        </div>
+        <Link href="/claims/new" className={buttonClass("primary")}>
+          New claim
+        </Link>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <Stat
+          label="Total claimed"
+          value={formatMoney(totals.total, totals.currency)}
+          hint={
+            totals.unconvertedCount
+              ? `${totals.unconvertedCount} claim(s) in unsupported currencies excluded`
+              : "Converted at policy rates (§13)"
+          }
         />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
-              page.tsx
-            </code>{" "}
-            file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+        <Stat label="Claims" value={String(totals.claimCount)} />
+        <Stat label="Awaiting decision" value={String(awaitingDecision)} />
+        <Stat label="Not reviewed or uncertain" value={String(needsAttention)} />
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        {FILTERS.map((f) => (
+          <button
+            key={f}
+            onClick={() => setFilter(f)}
+            className={`rounded-full px-3 py-1 text-sm ring-1 ${
+              filter === f ? "bg-slate-900 text-white ring-slate-900" : "bg-white text-slate-600 ring-slate-200 hover:bg-slate-50"
+            }`}
           >
-            <Image
-              className="dark:invert h-[14px] w-4"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+            {f === "ALL" ? "All" : STATUS_LABELS[f]}
+            <span className="ml-1 opacity-70">{f === "ALL" ? claims.length : (totals.byStatus[f] ?? 0)}</span>
+          </button>
+        ))}
+      </div>
+
+      {visible.length === 0 ? (
+        <EmptyState title={claims.length === 0 ? "No claims yet" : "No claims with this status"}>
+          {claims.length === 0 && (
+            <Link href="/claims/new" className="underline">
+              Submit the first claim
+            </Link>
+          )}
+        </EmptyState>
+      ) : (
+        <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white shadow-sm">
+          <table className="w-full text-left text-sm">
+            <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase text-slate-500">
+              <tr>
+                <th className="px-4 py-3">Claimant</th>
+                <th className="px-4 py-3">Expense</th>
+                <th className="px-4 py-3 text-right">Amount</th>
+                <th className="px-4 py-3">AI suggestion</th>
+                <th className="px-4 py-3">Status</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {visible.map((claim) => (
+                <ClaimRow key={claim.id} claim={claim} />
+              ))}
+            </tbody>
+          </table>
         </div>
-      </main>
+      )}
     </div>
+  );
+}
+
+function ClaimRow({ claim }: { claim: ClaimListItem }) {
+  const review = claim.latestReview;
+  const category = claim.finalCategory ?? review?.aiCategory ?? (claim.category || "Unclassified");
+  const inBase = toBaseAmount(claim.amount, claim.currency);
+
+  return (
+    <tr className="hover:bg-slate-50">
+      <td className="px-4 py-3 align-top">
+        <Link href={`/claims/${claim.id}`} className="font-medium text-slate-900 hover:underline">
+          {claim.claimant || "(no claimant)"}
+        </Link>
+        <div className="text-xs text-slate-500">{claim.expenseDate}</div>
+      </td>
+      <td className="max-w-xs px-4 py-3 align-top">
+        <div className="truncate">{claim.description}</div>
+        <div className="text-xs text-slate-500">
+          {category}
+          {claim.finalCategory ? " · set by reviewer" : ""}
+        </div>
+      </td>
+      <td className="whitespace-nowrap px-4 py-3 text-right align-top">
+        <div>{formatMoney(claim.amount, claim.currency)}</div>
+        {claim.currency !== BASE_CURRENCY && (
+          <div className="text-xs text-slate-500">
+            {inBase === null ? "unsupported currency" : `≈ ${formatMoney(inBase, BASE_CURRENCY)}`}
+          </div>
+        )}
+      </td>
+      <td className="px-4 py-3 align-top">
+        {review ? (
+          <div className="flex flex-wrap items-center gap-1">
+            <VerdictBadge verdict={review.aiVerdict} />
+            {review.aiUncertain && <Badge tone="amber">Uncertain</Badge>}
+            {review.aiSource === "FALLBACK" && <Badge>Rule-based</Badge>}
+          </div>
+        ) : (
+          <span className="text-xs text-slate-400">Not reviewed yet</span>
+        )}
+      </td>
+      <td className="px-4 py-3 align-top">
+        <StatusBadge status={claim.status} />
+      </td>
+    </tr>
   );
 }
