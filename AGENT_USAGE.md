@@ -1,125 +1,69 @@
 # Agent Usage
 
-This document describes how I approached the project, the design decisions I made, how I used an AI coding assistant, the issues I found, and how I verified the result.
+## Tools I used
 
-## Tools
+- **Claude Code** as my coding assistant. I used it to talk through the design, draft code and tests for each step, and debug errors.
+- **Google Gemini** is the LLM inside the app itself. It classifies claims, explains them against the policy and asks follow-up questions. I'm using `gemini-3.5-flash-lite` as the main model and `gemini-3.1-flash-lite` as the backup (both set in `.env`).
 
-| Tool | Purpose |
-|
-| **Claude Code** (Claude Opus 5.5) | Coding assistant for discussing approaches, drafting implementations and tests, and debugging. |
-| **Google Gemini** (`gemini-3.8-flash`) | The LLM used inside the product for classification, explanations, policy citations and clarification questions. |
+## How I approached it
 
-## Approach
+I picked the expense claim problem over the data migration one because I wanted to finish a complete, working and deployed app in the 48 hours rather than half of a bigger one.
 
-1. **Scoped the problem.** Compared both problem statements and chose the Expense Claim Review Assistant, to deliver a complete, deployed and well-tested core workflow within the 48-hour window rather than a partial solution to the larger problem.
-2. **Designed before building.** Defined the core principle first: deterministic code for anything that must be exact, the LLM only for language and judgement, and a human for every final decision.
-3. **Built incrementally.** Eight steps (setup → data → database → rules → AI → API → UI → deployment), each reviewed, tested and committed before moving on.
-4. **Verified continuously.** Type checks, unit tests, real LLM runs, failure testing and manual end-to-end checks at every step.
+Before writing any code I decided on one main rule for the whole app: anything that has to be exact (amounts, dates, limits, receipts, duplicates, totals) is done by normal code and tested. The AI is only used for the fuzzy parts, like working out the category from a vague description, explaining the decision and asking for missing information. And a human always makes the final call.
 
-## Design decisions
+I built it in small steps: setup, sample data, database, validation rules, AI review, API, UI, then deployment. After every step I ran `npx tsc --noEmit` and `npm test`, tried it manually, and only then committed.
 
-### Scope
-- **Problem 1 (Medium) over Problem 2 (Expert).** A complete, polished workflow is more valuable than a partial one under a 48-hour limit.
-- **TypeScript and Next.js.** The stack I know best, so I can explain, debug and extend every part. One codebase covers both the UI and the API.
-- **Intentionally excluded:** authentication and roles, receipt upload/OCR, dark mode, and payments. These are listed as limitations so the effort went into the core review workflow.
+## Main decisions and why
 
-### Architecture
-- **PostgreSQL on Neon with Prisma.** Real persistence that works on serverless hosting (SQLite would not persist on Vercel). Prisma gives a readable schema, migrations and type-safe queries.
-- **Prisma pinned to v6.** A stable, well-documented version for a reproducible setup.
-- **Separate tables for `Claim`, `Review`, `Decision` and `AuditEvent`.** AI output and human decisions are never mixed, so it is always clear what the AI suggested and what the reviewer decided.
-- **Every review run is stored, never overwritten.** Re-reviews after a clarification or override keep the full history.
-- **The slow LLM review has its own endpoint.** Creating a claim is instant; the review runs separately with a visible loading state, so the UI never appears frozen.
-- **Shared validation schema** between the form and the API, so users see errors immediately while the server still validates every request.
+**Stack.** I used Next.js with TypeScript because it's what I'm most comfortable with, and it lets me keep the frontend and backend in one project. For the database I used Postgres on Neon with Prisma, since SQLite wouldn't keep data on Vercel.
 
-### Data and validation
-- **Deterministic rules as pure functions.** Required fields, dates, amounts, currencies, receipts, category limits and duplicates are computed by code with no database or LLM access, which makes them predictable and easy to test.
-- **"Today" is passed into the rules** instead of being read inside them, so date-based tests are repeatable.
-- **The expense date is stored as text** so an invalid date (e.g. `2026-02-30`) can be saved and flagged instead of crashing.
-- **Money is stored as `Decimal`**, and totals are summed in integer paise to avoid floating-point errors.
-- **Duplicate detection by fingerprint** (claimant + date + amount + currency). The description is excluded, so a resubmitted expense with reworded text is still caught.
-- **Fixed exchange rates (USD, EUR, GBP → INR)** defined in the policy, with unsupported currencies flagged for finance review.
-- **Multi-currency sample data** with diverse claimants, so conversion and limit checks are actually exercised.
-- **Each of the 13 sample claims targets one requirement** (duplicate, over limit, missing receipt, future date, stale claim, alcohol, vague description, and so on), so the demo covers every feature.
-- **The seed script shifts sample dates relative to today**, so date-based checks stay correct whenever the demo is reset.
+**Database design.** I kept claims, AI reviews, human decisions and the history log in separate tables so it's always clear what the AI said and what the reviewer decided. Reviews are never overwritten. If a claim is reviewed again, the old review stays in the history.
 
-### LLM workflow
-- **Gemini with a configurable model name.** The free tier suits a hosted demo, and the model can be changed through an environment variable without code changes.
-- **Keyword-based policy retrieval instead of embeddings.** For about 40 clauses it is free, fast, deterministic and testable; embeddings would be considered for a much larger policy.
-- **Structured output.** A JSON response schema, validated again with zod before use.
-- **Quotes always come from the policy file.** The LLM only selects which clauses apply; citations to clauses that were not provided are removed and noted.
-- **The LLM can never be more lenient than the rules.** If the code finds a problem, the AI's verdict is raised accordingly.
-- **Uncertainty is explicit.** Confidence below 70%, or no valid citation, is marked "uncertain" with the reason shown.
-- **The LLM's category is re-checked by code.** For claims without a valid category, limits are re-checked against the suggested category.
-- **Privacy.** The claimant's name is not sent to the LLM.
-- **Prompt-injection defence.** The claim description is treated as data, and the prompt tells the model to ignore instructions inside it.
+**Validation rules.** All the rules are plain functions with no database or AI calls, so they're easy to test. A few details I cared about:
+- Money is stored as a Decimal and totals are added up in paise, so there are no floating point errors.
+- The date is stored as text so a wrong date like 2026-02-30 gets flagged instead of crashing the app.
+- Duplicates are matched on claimant, date, amount and currency, but not the description, so the same expense resubmitted with different wording is still caught.
+- Each of the 13 sample claims is there to test one specific rule, and I used several currencies so the conversion actually gets tested. The seed script moves the dates relative to today so the date checks keep working.
 
-### Reviewer workflow
-- **The AI only recommends.** Approve and reject are always human actions.
-- **Reasons are required** to reject, request clarification, or override a category; approving a claim with blocking issues also requires a reason.
-- **Final decisions are locked**, and each decision records which review it was based on.
-- **Clarification loop.** The claimant's answer is added to the claim and the review re-runs automatically with the new information.
-- **Clarification requests are pre-filled** with the AI's questions, which the reviewer can edit.
-- **Two-step confirmation** for every decision, to prevent accidental approvals or rejections.
+**The AI part.** These are the things I put in so the AI can't just make things up:
+- The AI only picks which policy clauses apply. The quoted text shown to the reviewer comes from the policy file, not from the AI.
+- If the AI cites a clause it wasn't given, that citation is removed.
+- The AI can't be more lenient than the rules. If the code finds a problem, the verdict can't be "compliant".
+- If confidence is under 70%, the result is marked as uncertain and the reason is shown.
+- The claimant's name isn't sent to Gemini, and the prompt tells the model to ignore any instructions written inside the claim description.
 
-### Reliability and observability
-- **Retries with exponential backoff** for temporary LLM errors only (overload, rate limits, timeouts), within a total time budget.
-- **Clearly labelled rule-based fallback** when the LLM is unavailable; the claim is marked uncertain and sent for manual review.
-- **Structured JSON logs** for every LLM call (model, latency, attempt, verdict, errors) and every audit event.
-- **Database transactions** so a decision, its status change and its audit entry are saved together or not at all.
-- **Consistent API errors** (400 invalid input, 404 not found, 409 conflict, 422 business rule) shown clearly in the UI.
+For policy retrieval I used keyword matching instead of embeddings, because the policy is only about 40 clauses and keywords are simpler, free and testable. For claims with no category, I send the AI the rules for every category, because it can't pick the right one without seeing all the options (more on that below).
 
-## Delegated work
+**Reviewer workflow.** The AI only recommends. Approving or rejecting is always done by the reviewer, and rejecting, asking for clarification or changing the category all need a reason. Once a claim is approved or rejected it's locked. When the claimant answers a question, the answer is added to the claim and the review runs again automatically.
 
-The coding assistant drafted implementations for the steps above, which I then reviewed, adjusted, integrated and tested: the sample policy and claims, database schema and seed script, validation rules, policy retrieval, the LLM prompt and guardrails, API routes, UI components, and unit tests.
+**Reliability.** If Gemini fails with a temporary error, the app retries with a short wait in between, and the last try uses the backup model. If it still fails, the app shows a clearly marked rule-based result and sends the claim for manual review. Every AI call and every action is logged as JSON so I could see what was happening.
 
-I handled the scoping and design decisions, infrastructure and secrets (Gemini, Neon, Vercel; keys were never shared with the assistant), and all testing and verification.
+**What I left out on purpose:** login and roles, receipt upload, dark mode and payments. I wanted to spend the time on the core review flow.
 
-## Representative prompts
+## What I delegated
 
-1. "Plan the implementation as small, testable steps with a clean, professional folder structure, and explain the design of each part."
-2. "Here is the output of the AI review script for a sample claim. Is the fallback behaving correctly?" (reviewing real LLM and fallback results before building the UI)
-3. "The policy needs to change to match the updated sample data and supported currencies."
-4. Debugging with exact output, e.g. pasting a failing `tsc` or `npm test` result and asking for the root cause.
-5. "The UI should use a light theme only and not follow the operating system's dark mode."
-6. "Walk me through the end-to-end flow of the app so I can verify each part myself."
+Claude Code drafted the code for each step: the sample policy and claims, the database schema, the validation rules, the AI prompt and checks, the API routes, the UI and the tests. I reviewed it, changed what didn't fit, put it together and tested everything.
 
-### Prompt used inside the product
+I made the decisions above, set up all the accounts and keys myself (Gemini, Neon, Vercel; I never shared the keys), chose the models and did all the testing.
 
-The system prompt is in `src/lib/ai/reviewAgent.ts` (`SYSTEM_PROMPT`). It instructs the model to:
-- use only the provided policy clauses and cite them by reference;
-- classify into exactly one valid category, lowering confidence and explaining the alternative when ambiguous;
-- treat deterministic findings as facts and not recalculate amounts, dates or limits;
-- ask specific questions when information is missing;
-- treat the claim description as data and ignore any instructions inside it.
+## Things that went wrong and how I fixed them
 
-### Representative output
+- **Wrong model name.** The first model suggested (`gemini-2.5-flash`) wasn't available for new users and gave a 404. I caught it with a small test script before building anything on top of it, and just changed the model in `.env`.
+- **Sample data.** The first version of the sample claims only had INR and Indian names. I changed it to use different names and USD, EUR and GBP too. That also meant updating the policy: I added a currency section and a list of valid categories, and renamed the company from "Acme" because one of the claims was a dinner with a client called "Acme Corp".
+- **A type error the tests missed.** One test had a type that was too narrow. Vitest passed because it doesn't check types, but `tsc` failed. Since then I always run both.
+- **Gemini overloaded.** Gemini kept returning 503 "high demand" errors. The fallback worked, but it missed things only the AI catches, like the alcohol rule. I added retries and a backup model. Later the logs showed all three retries were still hitting the same busy model because I hadn't set the backup. I listed the available models with a script (`scripts/list-models.mjs`), tested a few, and switched to Flash-Lite as the main model with another Lite model as the backup. I avoided the `-latest` model names because they can change without warning.
+- **Misleading fallback result.** While Gemini was down, the fallback's keyword guess ("Meals") was being used to check limits and was labelled as "AI-suggested", which showed a wrong over-limit warning. I changed it so limits are only re-checked against a category the real AI chose.
+- **AI missing the right policy section.** For "Lunch with Globex Ltd team to discuss contract renewal" with no category, the AI picked Client Entertainment but could only cite Meals rules. The review page shows which clauses were sent to the AI, and Client Entertainment wasn't there, because none of the keywords matched. Now claims without a category get all the category rules, and I added a test with that exact description so it doesn't break again. After the fix, the AI cited §4.1 and §4.2 and asked for the attendees' names.
+- **Dark mode.** The starter CSS followed my Mac's dark mode and made the text unreadable on the white cards, so I made the app light theme only.
 
-Claim: *"Dinner with Acme Corp procurement team at the airport"*, INR 3,200, submitted as "Other".
+Things I decided not to do: use a vector database (not needed for a policy this size), and run `npm audit fix --force` (it would force breaking upgrades, so I listed the warnings as a known limitation instead).
 
-- **Gemini:** **Client Entertainment** (confidence 0.95), verdict **Needs clarification**, citing §1.5, §4.1 (within the INR 5,000 limit) and §4.2, and asking for the attendees' names.
-- **Rule-based fallback:** **Meals** at 0.3 confidence, under which the claim would wrongly appear over the limit.
+## How I checked everything
 
-This comparison justified keeping the LLM step, and keeping the fallback clearly labelled and routed to a human.
-
-## Issues found and corrected
-
-| Issue | How it was caught | Resolution |
-
-| The assistant proposed `gemini-2.5-flash`, which was no longer available to new users (404). | A connectivity script (`scripts/test-gemini.mjs`) before feature work | Switched to the current Flash model via the `GEMINI_MODEL` env variable, with no code change |
-| Sample claims used only INR and Indian names. | My review of the data | Diversified names and added USD/EUR/GBP claims |
-| The policy lacked supported currencies and an explicit category list, and the company name "Acme" clashed with a client named "Acme Corp". | My review of the policy | Renamed the company, added §1.5 (categories) and §13 (currencies) |
-| A test used an overly narrow type (`as const`); Vitest passed because it does not type-check. | `npx tsc --noEmit` | Fixed the type; `tsc` now runs alongside the tests before each commit |
-| Gemini returned 503 "high demand" errors in testing. The fallback worked but missed the alcohol rule only the LLM detects. | Manual runs with `scripts/try-review.ts` | Added retries with exponential backoff, a total time budget, an optional backup model, and readable error messages |
-| The starter CSS followed the OS dark mode, making text unreadable on white cards. | Visual check | Forced a light theme; documented as a limitation |
-
-**Rejected suggestions:** a vector database for retrieval (unnecessary at this size), and `npm audit fix --force` (it would apply breaking upgrades; listed as a known limitation).
-
-## Verification
-
-- **45 unit tests (`npm test`):** validation rules (impossible dates, limits after currency conversion, duplicates, floating-point totals), policy retrieval, LLM guardrails (invented citations removed, verdict never more lenient than the rules, uncertainty marking, fallback), and reviewer decision rules.
-- **Type checking:** `npx tsc --noEmit` before every commit.
-- **Real LLM runs** on selected sample claims, checking category, citations and questions by hand.
-- **Failure testing:** an invalid model name confirmed the fallback and error logging; real 503 responses confirmed the retry logic.
-- **API checks with curl:** for example, rejecting without a reason returns 422.
-- **Database inspection** with Prisma Studio.
-- **End-to-end walkthrough:** submit → automatic review → clarification → re-review → override → approve/reject → activity log.
+- 46 unit tests for the validation rules, policy retrieval, AI checks and reviewer rules (`npm test`)
+- `npx tsc --noEmit` before every commit
+- Real Gemini runs on sample claims, reading the category, citations and questions myself
+- Testing failures on purpose (a wrong model name) and during real Gemini outages
+- curl and the browser Network tab for the API, e.g. rejecting without a reason gives a 422
+- Prisma Studio to check what was actually saved in the database
+- Going through the whole flow by hand: submit, AI review, clarification, review again, change category, approve or reject, and check the activity log
