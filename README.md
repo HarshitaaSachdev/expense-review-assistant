@@ -2,8 +2,8 @@
 
 An internal tool that reviews employee expense claims against a company expense policy. Deterministic code checks the hard rules, an LLM helps with the judgement calls and explains its reasoning with policy citations, and a human reviewer makes every final decision.
 
-- **Live app:** https://YOUR-VERCEL-URL.vercel.app
-- **Repository:** https://github.com/YOUR-USERNAME/expense-review-assistant
+- **Live app:** (https://expense-review-assistant.vercel.app/)
+- **Repository:** https://github.com/HarshitaaSachdev/expense-review-assistant
 
 No login is needed. Enter any name in "Your name" on a claim page to act as the reviewer.
 
