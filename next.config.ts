@@ -1,7 +1,10 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  // The policy markdown is read at runtime, so bundle it with every server function
+  outputFileTracingIncludes: {
+    "/**/*": ["./data/**/*"],
+  },
 };
 
 export default nextConfig;
