@@ -93,8 +93,12 @@ export function classifyByKeywords(description: string): { category: Category | 
   return { category: top.category, confidence: top.score >= 2 ? 0.6 : 0.45 };
 }
 
-// Picks the policy clauses relevant to a claim: its category, likely categories,
-// topic keywords (e.g. alcohol), currency rules, and every clause a rule finding referenced
+function sectionOf(category: Category): string {
+  return CATEGORY_LIMITS[category].policyRef.split(".")[0];
+}
+
+// Picks the policy clauses relevant to a claim: its category, topic keywords (e.g. alcohol),
+// currency rules, and every clause a rule finding referenced
 export function retrievePolicy(
   claim: Pick<ClaimInput, "category" | "description" | "currency">,
   findings: Finding[] = [],
@@ -104,14 +108,19 @@ export function retrievePolicy(
   const refs = new Set<string>(ALWAYS_INCLUDED);
   const sectionIds = new Set<string>();
 
-  const categories: Category[] = [];
   const submitted = claim.category.trim();
-  if (isValidCategory(submitted)) categories.push(submitted);
-  else refs.add("1.5");
-  for (const { category } of rankCategories(claim.description).slice(0, 3)) {
-    if (!categories.includes(category)) categories.push(category);
+  const matchedCategories = rankCategories(claim.description).map((entry) => entry.category);
+
+  if (isValidCategory(submitted)) {
+    // Known category: its section plus the closest keyword matches
+    sectionIds.add(sectionOf(submitted));
+    for (const category of matchedCategories.slice(0, 3)) sectionIds.add(sectionOf(category));
+  } else {
+    // Unclassified claim: the AI has to choose a category, so it needs every category's rules.
+    // Keywords alone can miss the right one (e.g. "Globex Ltd" does not say "client").
+    refs.add("1.5");
+    for (const category of CATEGORIES) sectionIds.add(sectionOf(category));
   }
-  for (const category of categories) sectionIds.add(CATEGORY_LIMITS[category].policyRef.split(".")[0]);
 
   for (const topic of TOPIC_KEYWORDS) {
     if (topic.words.some((word) => tokens.has(word))) topic.refs.forEach((ref) => refs.add(ref));
@@ -123,5 +132,5 @@ export function retrievePolicy(
   for (const finding of findings) if (finding.policyRef) refs.add(finding.policyRef);
 
   const clauses = allClauses(policy).filter((c) => refs.has(c.ref) || sectionIds.has(c.sectionId));
-  return { clauses, matchedCategories: categories };
+  return { clauses, matchedCategories };
 }

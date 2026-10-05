@@ -51,3 +51,7 @@ describe("classifyByKeywords", () => {
     expect(classifyByKeywords("Miscellaneous")).toEqual({ category: null, confidence: 0 });
   });
 });
+  it("gives the AI every category's rules when the claim is unclassified", () => {
+    const result = refs({ category: "", description: "Lunch with Globex Ltd team to discuss contract renewal", currency: "INR" });
+    expect(result).toEqual(expect.arrayContaining(["3.1", "4.1", "4.2", "5.1", "8.2", "10.2"]));
+  });
