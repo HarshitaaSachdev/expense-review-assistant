@@ -45,8 +45,9 @@ export async function reviewClaim(claimId: string) {
 
   let ai = await runAiReview(input, findings);
 
-  // No valid category from the employee: check limits against the AI's suggestion as well
-  if (!claim.finalCategory && !isValidCategory(input.category.trim()) && ai.category) {
+  // No valid category from the employee: check limits against the AI's suggestion as well.
+  // Skipped for the fallback, whose category is only an unverified keyword guess.
+  if (ai.source === "GEMINI" && !claim.finalCategory && !isValidCategory(input.category.trim()) && ai.category) {
     findings = validateClaim(input, { today, duplicateIds, effectiveCategory: ai.category, categorySource: "ai" });
     ai = applyVerdictFloor(ai, findings);
   }
